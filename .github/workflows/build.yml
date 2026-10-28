@@ -1,0 +1,85 @@
+
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build MISBAH PENAL
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: |
+          xcodebuild -version
+          xcodebuild -list -project ThreeOneOSFive.xcodeproj
+
+      - name: Build iOS app
+        shell: bash
+        run: |
+          set -o pipefail
+
+          mkdir -p "$RUNNER_TEMP/DerivedData"
+
+          xcodebuild \
+            -project ThreeOneOSFive.xcodeproj \
+            -scheme 3105 \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee build.log
+
+      - name: Package unsigned IPA
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/3105.app"
+
+          if [ ! -d "$APP_PATH" ]; then
+            echo "ERROR: Built .app was not found at:"
+            echo "$APP_PATH"
+            find "$RUNNER_TEMP/DerivedData/Build/Products" \
+              -maxdepth 4 -name "*.app" -print
+            exit 1
+          fi
+
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$APP_PATH" "$RUNNER_TEMP/ipa/Payload/"
+
+          cd "$RUNNER_TEMP/ipa"
+          zip -qry "$GITHUB_WORKSPACE/MISBAH-PENAL-unsigned.ipa" Payload
+
+          test -s "$GITHUB_WORKSPACE/MISBAH-PENAL-unsigned.ipa"
+
+      - name: Upload IPA artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MISBAH-PENAL-unsigned-IPA
+          path: MISBAH-PENAL-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MISBAH-PENAL-build-log
+          path: build.log
+          if-no-files-found: ignore
+          retention-days: 7
